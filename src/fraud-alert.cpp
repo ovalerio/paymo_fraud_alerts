@@ -227,7 +227,7 @@ int main() {
 	data_t payment_data;
 
 	// STEP 1: Reading batch payment data from CSV file
-	ifstream batch_file("paymo_input/batch_payment_small.csv");
+	ifstream batch_file("paymo_input/batch_payment.csv");
 	batch_file >> payment_data;
 
 	if (!batch_file.eof()) {
@@ -243,7 +243,7 @@ int main() {
 	build_paymo_network(payment_data, g);
 
 	// STEP 3: Reading stream payment data from CSV file
-	ifstream stream_file("paymo_input/stream_payment_small.csv");
+	ifstream stream_file("paymo_input/stream_payment.csv");
 	stream_file >> payment_data;
 
 	if (!stream_file.eof()) {
