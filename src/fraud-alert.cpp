@@ -53,6 +53,7 @@ typedef graph_traits<Graph>::edge_descriptor Edge;
 
 typedef int UID;
 typedef Vertex Node;
+typedef bool NewUser;
 
 typedef std::map<UID, Node> UserMap; //key->UID; value-> Node
 typedef std::map<Node, UID> NodeMap; //key->Node; value-> UID
@@ -62,6 +63,23 @@ typedef std::pair<Node, Node> Connection;
 UserMap users;
 NodeMap nodes;
 
+// mantain a set of all one-to-one connections (payments,edges)
+set<Connection> connections;
+
+// By convention we create connections always using the smaller node number
+// in the first position and the bigger node number in the second position
+Connection create_connection(Node node1, Node node2) {
+	Connection connection;
+	if (node1 < node2) {
+		connection.first = node1;
+		connection.second = node2;
+	} else {
+		connection.first = node2;
+		connection.second = node1;
+	}
+	return connection;
+}
+
 // this function maps a userid with a corresponding payment graph node
 // this function also register the association between a node and userid.
 Node add_user(UID uid, Graph& g) {
@@ -70,10 +88,9 @@ Node add_user(UID uid, Graph& g) {
 	if (it != users.end()) {
 		node = it->second;
 	} else {
-		Vertex vertex = add_vertex(g);
-		users.insert(std::make_pair(uid, vertex));
-		nodes.insert(std::make_pair(vertex, uid));
-		node = vertex;
+		node = add_vertex(g);
+		users.insert(std::make_pair(uid, node));
+		nodes.insert(std::make_pair(node, uid));
 	}
 	return node;
 }
@@ -84,8 +101,9 @@ void update_network(Connection connection, Graph& g) {
 	Vertex v0 = connection.first;
 	Vertex v1 = connection.second;
 	// the payment network is updated only if there is no prior transactions between users
-	if (!edge(v0, v1, g).second && !edge(v1, v0, g).second) {
-		add_edge(connection.first, connection.second, weight, g);
+	if (!edge(v0, v1, g).second) { // according to our convention v0 is always smaller than v1
+		add_edge(connection.first, connection.second, weight, g); // adding new edge to paymo graph
+		connections.insert(connection); // registering one-to-one association
 	}
 }
 
@@ -97,7 +115,7 @@ void build_paymo_network(data_t& payment_data, Graph& g) {
 		UID uid2 = payment.id2;
 		Node node1 = add_user(uid1, g);
 		Node node2 = add_user(uid2, g);
-		Connection connection(node1, node2);
+		Connection connection = create_connection(node1, node2);
 		update_network(connection, g);
 	}
 }
@@ -260,21 +278,32 @@ int main() {
 	ofstream output3("paymo_output/output3.txt");
 
 	for (unsigned int indx = 0; indx < payment_data.size(); indx++) {
+
 		payment_t payment = payment_data[indx];
 		UID uid1 = payment.id1;
 		UID uid2 = payment.id2;
 		Node node1 = add_user(uid1, g);
 		Node node2 = add_user(uid2, g);
-		Connection connection(node1, node2);
+		Connection connection = create_connection(node1, node2);
 
-		bool use_early_stop = true; // optimization to stop Dijkstra fully execution
-		int friendship = friendship_degree(connection, g, use_early_stop);
+		int friendship;
+
+		if (connections.find(connection)!=connections.end()) {
+			// if a direct connection exists between both nodes (users) then no alert is needed
+			friendship = 1;
+			std::cout << "Existing friendship between USER:" << uid1 << " and USER:" << uid2 << std::endl;
+		} else {
+			// for all other cases we will use boost::dijkstra_search_algorithm
+			bool use_early_stop = true; // optimization to stop Dijkstra fully execution
+			friendship = friendship_degree(connection, g, use_early_stop);
+			update_network(connection, g); // updating PayMo payment graph
+			std::cout << "The friendship degree between USER:" << uid1 << " and USER:" << uid2 << " is " << friendship << std::endl;
+		}
 
 		output1 << (friendship>1? "Unverified" : "Trusted") << std::endl;
 		output2 << (friendship>2? "Unverified" : "Trusted") << std::endl;
 		output3 << (friendship>4? "Unverified" : "Trusted") << std::endl;
 
-		update_network(connection, g);
 	}
 
 	output1.close();
